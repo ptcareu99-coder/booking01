@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>時段預約系統</title>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root { --primary: #06c755; --bg: #f7f8fa; --card: #ffffff; --text: #222; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 14px; background: var(--bg); color: var(--text); }
+    .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    h3 { margin: 0 0 12px 0; font-size: 18px; }
+    .badge { display: inline-block; background: #e8f5e9; color: #2e7d32; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; }
+    .badge-admin { background: #ffebee; color: #c62828; }
+    label { display: block; margin-top: 12px; font-size: 13px; color: #666; font-weight: bold; }
+    input, select, textarea { width: 100%; padding: 10px; margin-top: 4px; border: 1px solid #dcdcdc; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
+    .slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+    .slot-btn { padding: 10px 4px; border: 1px solid #ddd; background: #fff; border-radius: 8px; text-align: center; cursor: pointer; font-size: 14px; }
+    .slot-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: bold; }
+    .btn-submit { width: 100%; background: var(--primary); color: #fff; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; margin-top: 20px; cursor: pointer; }
+    .btn-submit:disabled { background: #ccc; cursor: not-allowed; }
+    .tab-bar { display: flex; margin-bottom: 14px; gap: 8px; }
+    .tab { flex: 1; text-align: center; padding: 10px; background: #e9ecef; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
+    .tab.active { background: var(--primary); color: #fff; }
+    .cancel-warning { color: #d32f2f; font-size: 13px; margin-top: 6px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+
+  <div class="tab-bar">
+    <div id="tab-book" class="tab active" onclick="switchView('book')">線上預約</div>
+    <div id="tab-manage" class="tab" onclick="switchView('manage')">我的預約 / 取消</div>
+  </div>
+
+  <div id="view-book">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>選擇預約資訊</h3>
+        <span id="roleBadge" class="badge">民眾預約</span>
+      </div>
+
+      <label>預約治療師</label>
+      <select id="therapistSelect" onchange="loadSlots()"></select>
+
+      <label>預約日期</label>
+      <input type="date" id="bookDate" onchange="loadSlots()">
+
+      <label>可選時段（上午 08-12 / 下午 13-17 / 晚班 18-22）</label>
+      <div id="slotContainer" class="slot-grid">請先選擇日期</div>
+
+      <label>姓名</label>
+      <input type="text" id="patientName" placeholder="請輸入姓名">
+
+      <label>聯絡電話</label>
+      <input type="tel" id="patientPhone" placeholder="09xxxxxxxx">
+
+      <label>主訴備註（選填）</label>
+      <textarea id="patientNote" rows="2" placeholder="簡述不適部位或需求"></textarea>
+
+      <div id="adminOverrideBox" style="display:none; margin-top:12px; background:#fff3e0; padding:10px; border-radius:8px;">
+        <label style="color:#e65100; margin:0;"><input type="checkbox" id="overrideConflict"> [管理員特權] 強制插單覆寫既有行程</label>
+      </div>
+
+      <button id="submitBtn" class="btn-submit" onclick="submitBooking()">確認預約</button>
+    </div>
+  </div>
+
+  <div id="view-manage" style="display:none;">
+    <div class="card">
+      <h3>有效預約紀錄</h3>
+      <div id="myBookingsList">載入中...</div>
+    </div>
+  </div>
+
+  <script>
+    // ========== 請填入您的 LIFF ID 與 GAS 部署網址 ==========
+    const LIFF_ID = "YOUR_LIFF_ID";
+    const GAS_URL = "YOUR_GAS_WEB_APP_URL";
+    // ====================================================
+
+    let currentUser = { id: "", name: "", isTherapist: false, clinicPhone: "" };
+    let selectedSlot = "";
+
+    window.onload = async () => {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+      const profile = await liff.getProfile();
+      currentUser.id = profile.userId;
+      currentUser.name = profile.displayName;
+      document.getElementById("patientName").value = profile.displayName;
+
+      // 預設選明天
+      const tmrw = new Date();
+      tmrw.setDate(tmrw.getDate() + 1);
+      document.getElementById("bookDate").value = tmrw.toISOString().split("T")[0];
+
+      // 身分鑑權
+      const res = await fetch(`${GAS_URL}?action=checkUser&userId=${currentUser.id}`);
+      const data = await res.json();
+      currentUser.clinicPhone = data.clinicPhone || "";
+
+      const select = document.getElementById("therapistSelect");
+      data.therapists.forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t.id;
+        opt.innerText = t.name;
+        select.appendChild(opt);
+      });
+
+      if (data.isTherapist) {
+        currentUser.isTherapist = true;
+        document.getElementById("roleBadge").innerText = "管理員代約模式";
+        document.getElementById("roleBadge").className = "badge badge-admin";
+        document.getElementById("adminOverrideBox").style.display = "block";
+      }
+
+      loadSlots();
+    };
+
+    async function loadSlots() {
+      const therapistId = document.getElementById("therapistSelect").value;
+      const date = document.getElementById("bookDate").value;
+      const container = document.getElementById("slotContainer");
+      selectedSlot = "";
+      if (!date || !therapistId) return;
+
+      container.innerHTML = "<div style='grid-column:span 3; color:#888;'>查詢中...</div>";
+      const res = await fetch(`${GAS_URL}?action=getAvailableSlots&therapistId=${therapistId}&date=${date}`);
+      const data = await res.json();
+
+      container.innerHTML = "";
+      if (!data.slots || data.slots.length === 0) {
+        container.innerHTML = "<div style='grid-column:span 3; color:#999; text-align:center;'>當日無排診或時段已滿</div>";
+        return;
+      }
+
+      data.slots.forEach(slot => {
+        const btn = document.createElement("div");
+        btn.className = "slot-btn";
+        btn.innerText = slot;
+        btn.onclick = () => {
+          document.querySelectorAll(".slot-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          selectedSlot = slot;
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    async function submitBooking() {
+      const name = document.getElementById("patientName").value.trim();
+      const phone = document.getElementById("patientPhone").value.trim();
+      const date = document.getElementById("bookDate").value;
+      const note = document.getElementById("patientNote").value.trim();
+      const override = document.getElementById("overrideConflict").checked;
+
+      if (!name || !phone || !selectedSlot) {
+        alert("請填寫姓名、電話並選擇預約時段");
+        return;
+      }
+
+      const btn = document.getElementById("submitBtn");
+      btn.disabled = true;
+      btn.innerText = "預約處理中...";
+
+      const payload = {
+        action: "createBooking",
+        userId: currentUser.id,
+        isTherapist: currentUser.isTherapist,
+        therapistId: document.getElementById("therapistSelect").value,
+        date: date,
+        timeSlot: selectedSlot,
+        name: name,
+        phone: phone,
+        note: note,
+        overrideConflict: override,
+        operatorName: currentUser.name
+      };
+
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      const result = await res.json();
+
+      if (result.status === "success") {
+        if (liff.isInClient()) {
+          await liff.sendMessages([{
+            type: "text",
+            text: `已確認預約！\n預約代號：${result.bookingId}\n治療師：${result.therapistName}\n時段：${date} ${selectedSlot}\n預約人：${name}`
+          }]);
+        }
+        alert("預約成功！");
+        liff.closeWindow();
+      } else {
+        alert(result.message);
+        btn.disabled = false;
+        btn.innerText = "確認預約";
+      }
+    }
+
+    function switchView(view) {
+      if (view === 'book') {
+        document.getElementById("view-book").style.display = "block";
+        document.getElementById("view-manage").style.display = "none";
+        document.getElementById("tab-book").className = "tab active";
+        document.getElementById("tab-manage").className = "tab";
+      } else {
+        document.getElementById("view-book").style.display = "none";
+        document.getElementById("view-manage").style.display = "block";
+        document.getElementById("tab-book").className = "tab";
+        document.getElementById("tab-manage").className = "tab active";
+        loadUserBookings();
+      }
+    }
+
+    async function loadUserBookings() {
+      const list = document.getElementById("myBookingsList");
+      list.innerHTML = "載入中...";
+      const res = await fetch(`${GAS_URL}?action=getUserBookings&userId=${currentUser.id}`);
+      const data = await res.json();
+
+      list.innerHTML = "";
+      if (!data.bookings || data.bookings.length === 0) {
+        list.innerHTML = "<p style='color:#888;'>目前尚無未來的有效預約。</p>";
+        return;
+      }
+
+      data.bookings.forEach(b => {
+        const item = document.createElement("div");
+        item.style.borderBottom = "1px solid #eee";
+        item.style.padding = "10px 0";
+
+        const start = new Date(b.startTime);
+        const hoursDiff = (start.getTime() - new Date().getTime()) / 3600000;
+
+        let actionHtml = "";
+        if (hoursDiff > 72 || currentUser.isTherapist) {
+          actionHtml = `<button onclick="cancelBooking('${b.bookingId}')" style="background:#d32f2f;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">取消此預約</button>`;
+        } else {
+          actionHtml = `<div class="cancel-warning">⚠️ 距預約已不足 72 小時，無法線上取消。<br><a href="tel:${currentUser.clinicPhone}" style="color:#d32f2f;font-weight:bold;text-decoration:underline;">點此致電專人協助調整 (${currentUser.clinicPhone})</a></div>`;
+        }
+
+        item.innerHTML = `
+          <div><strong>時間：</strong>${b.startTime}</div>
+          <div><strong>治療師：</strong>${b.therapistName}</div>
+          <div><strong>預約姓名：</strong>${b.name}</div>
+          <div style="margin-top:8px;">${actionHtml}</div>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    async function cancelBooking(bookingId) {
+      if (!confirm("確定要取消此預約嗎？")) return;
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "cancelBooking",
+          bookingId: bookingId,
+          isTherapist: currentUser.isTherapist
+        })
+      });
+      const result = await res.json();
+      if (result.status === "success") {
+        alert("已成功取消");
+        loadUserBookings();
+      } else {
+        alert(result.message);
+      }
+    }
+  </script>
+</body>
+</html>
