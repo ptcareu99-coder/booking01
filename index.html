@@ -21,7 +21,7 @@
     .tab { flex: 1; text-align: center; padding: 10px; background: #e9ecef; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
     .tab.active { background: var(--primary); color: #fff; }
     .cancel-warning { color: #d32f2f; font-size: 13px; margin-top: 6px; line-height: 1.4; }
-    .therapist-info-bar { background: #e8f5e9; color: #2e7d32; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; margin-bottom: 8px; display: none; }
+    .therapist-info-bar { background: #e8f5e9; color: #2e7d32; padding: 10px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; margin-top: 8px; display: none; }
   </style>
 </head>
 <body>
@@ -36,13 +36,15 @@
     <div class="card">
       <h3>填寫預約需求</h3>
 
-      <!-- 圖文選單自帶參數時顯示此列提示，並自動隱藏下拉選單 -->
+      <!-- 圖文選單自帶參數時顯示此列提示 -->
       <div id="assignedTherapistBar" class="therapist-info-bar"></div>
 
       <!-- 治療師下拉選單（未帶參數時供手動選擇） -->
       <div id="therapistGroup">
         <label>預約治療師</label>
-        <select id="therapistSelect" onchange="loadSlots()"></select>
+        <select id="therapistSelect" onchange="loadSlots()">
+          <option value="">載入治療師清單中...</option>
+        </select>
       </div>
 
       <label>預約日期（僅開放未來 14 天內）</label>
@@ -73,15 +75,14 @@
   </div>
 
   <script>
-    // ========== 請更換為您的設定 ==========
+    // ========== 系統配置參數 ==========
     const LIFF_ID = "2012228224-VTA2gR3j";
     const GAS_URL = "https://script.google.com/macros/s/AKfycbyobqh2quqq-yC5AV-YYVxMUPQsdQm1O9_I9pHeYSj8RGItiTXpZwSIOCt4e5KuRWE9/exec";
-    // =====================================
+    // ==================================
 
     let currentUser = { id: "", name: "", clinicPhone: "" };
     let selectedSlot = "";
 
-    // 格式化日期為 YYYY-MM-DD
     function formatDateStr(date) {
       const y = date.getFullYear();
       const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -90,64 +91,86 @@
     }
 
     window.onload = async () => {
-      await liff.init({ liffId: LIFF_ID });
-      if (!liff.isLoggedIn()) {
-        liff.login();
-        return;
+      try {
+        // 1. 初始化 LIFF
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+
+        const profile = await liff.getProfile();
+        currentUser.id = profile.userId;
+        currentUser.name = profile.displayName;
+        document.getElementById("patientName").value = profile.displayName;
+
+        // 2. 嚴格鎖定未來 14 天日曆範圍
+        const now = new Date();
+        const minDate = new Date();
+        minDate.setDate(now.getDate() + 1); // 最早明天
+
+        const maxDate = new Date();
+        maxDate.setDate(now.getDate() + 14); // 最晚 14 天後
+
+        const minStr = formatDateStr(minDate);
+        const maxStr = formatDateStr(maxDate);
+
+        const dateInput = document.getElementById("bookDate");
+        dateInput.min = minStr;
+        dateInput.max = maxStr;
+        dateInput.value = minStr;
+
+        // 3. 呼叫後端取得治療師資料
+        const res = await fetch(`${GAS_URL}?action=getInitData`);
+        const data = await res.json();
+
+        if (data.status === "error") {
+          alert("後端回報錯誤: " + data.message);
+          return;
+        }
+
+        currentUser.clinicPhone = data.clinicPhone || "";
+
+        const select = document.getElementById("therapistSelect");
+        select.innerHTML = "";
+
+        if (!data.therapists || data.therapists.length === 0) {
+          alert("後端有連上，但 Therapists 工作表內未找到 status 為 ACTIVE 的治療師！");
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.innerText = "暫無在線治療師";
+          select.appendChild(opt);
+          return;
+        }
+
+        data.therapists.forEach(t => {
+          const opt = document.createElement("option");
+          opt.value = t.id;
+          opt.innerText = t.name;
+          select.appendChild(opt);
+        });
+
+        // 4. 解析圖文選單網址參數 (例如 ?therapist=T01)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlTherapist = urlParams.get('therapist');
+
+        if (urlTherapist) {
+          select.value = urlTherapist;
+          const selectedText = select.options[select.selectedIndex] ? select.options[select.selectedIndex].text : urlTherapist;
+          
+          // 隱藏下拉選單並顯示專屬提示框
+          document.getElementById("therapistGroup").style.display = "none";
+          const bar = document.getElementById("assignedTherapistBar");
+          bar.style.display = "block";
+          bar.innerText = `預約專屬治療師：${selectedText}`;
+        }
+
+        // 5. 自動載入初次時段
+        loadSlots();
+
+      } catch (err) {
+        alert("頁面載入異常: " + err.message);
       }
-
-      const profile = await liff.getProfile();
-      currentUser.id = profile.userId;
-      currentUser.name = profile.displayName;
-      document.getElementById("patientName").value = profile.displayName;
-
-      // 1. 嚴格限制 14 天範圍設定
-      const now = new Date();
-      const minDate = new Date();
-      minDate.setDate(now.getDate() + 1); // 最早：明天
-
-      const maxDate = new Date();
-      maxDate.setDate(now.getDate() + 14); // 最晚：14天後
-
-      const minStr = formatDateStr(minDate);
-      const maxStr = formatDateStr(maxDate);
-
-      const dateInput = document.getElementById("bookDate");
-      dateInput.min = minStr;
-      dateInput.max = maxStr;
-      dateInput.value = minStr;
-
-      // 2. 初始化後端資料
-      const res = await fetch(`${GAS_URL}?action=getInitData`);
-      const data = await res.json();
-      currentUser.clinicPhone = data.clinicPhone || "";
-
-      const select = document.getElementById("therapistSelect");
-      select.innerHTML = "";
-      data.therapists.forEach(t => {
-        const opt = document.createElement("option");
-        opt.value = t.id;
-        opt.innerText = t.name;
-        select.appendChild(opt);
-      });
-
-      // 3. 解析網址參數 (例如 ?therapist=T01)
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlTherapist = urlParams.get('therapist');
-
-      if (urlTherapist) {
-        select.value = urlTherapist;
-        const selectedText = select.options[select.selectedIndex] ? select.options[select.selectedIndex].text : urlTherapist;
-        
-        // 隱藏下拉選單並顯示鎖定提示條
-        document.getElementById("therapistGroup").style.display = "none";
-        const bar = document.getElementById("assignedTherapistBar");
-        bar.style.display = "block";
-        bar.innerText = `預約專屬治療師：${selectedText}`;
-      }
-
-      // 4. 自動載入初次時段
-      loadSlots();
     };
 
     async function loadSlots() {
@@ -158,26 +181,31 @@
       if (!date || !therapistId) return;
 
       container.innerHTML = "<div style='grid-column:span 3; color:#888;'>查詢空檔中...</div>";
-      const res = await fetch(`${GAS_URL}?action=getAvailableSlots&therapistId=${therapistId}&date=${date}`);
-      const data = await res.json();
+      
+      try {
+        const res = await fetch(`${GAS_URL}?action=getAvailableSlots&therapistId=${therapistId}&date=${date}`);
+        const data = await res.json();
 
-      container.innerHTML = "";
-      if (!data.slots || data.slots.length === 0) {
-        container.innerHTML = "<div style='grid-column:span 3; color:#999; text-align:center;'>當日已無可預約時段</div>";
-        return;
+        container.innerHTML = "";
+        if (!data.slots || data.slots.length === 0) {
+          container.innerHTML = "<div style='grid-column:span 3; color:#999; text-align:center;'>當日已無可預約時段</div>";
+          return;
+        }
+
+        data.slots.forEach(slot => {
+          const btn = document.createElement("div");
+          btn.className = "slot-btn";
+          btn.innerText = slot;
+          btn.onclick = () => {
+            document.querySelectorAll(".slot-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            selectedSlot = slot;
+          };
+          container.appendChild(btn);
+        });
+      } catch (e) {
+        container.innerHTML = "<div style='grid-column:span 3; color:#d32f2f; text-align:center;'>時段讀取失敗</div>";
       }
-
-      data.slots.forEach(slot => {
-        const btn = document.createElement("div");
-        btn.className = "slot-btn";
-        btn.innerText = slot;
-        btn.onclick = () => {
-          document.querySelectorAll(".slot-btn").forEach(b => b.classList.remove("active"));
-          btn.classList.add("active");
-          selectedSlot = slot;
-        };
-        container.appendChild(btn);
-      });
     }
 
     async function submitBooking() {
@@ -206,23 +234,29 @@
         note: note
       };
 
-      const res = await fetch(GAS_URL, {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
-      const result = await res.json();
+      try {
+        const res = await fetch(GAS_URL, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
 
-      if (result.status === "success") {
-        if (liff.isInClient()) {
-          await liff.sendMessages([{
-            type: "text",
-            text: `已確認預約！\n預約代號：${result.bookingId}\n治療師：${result.therapistName}\n時段：${date} ${selectedSlot}\n預約姓名：${name}`
-          }]);
+        if (result.status === "success") {
+          if (liff.isInClient()) {
+            await liff.sendMessages([{
+              type: "text",
+              text: `已確認預約！\n預約代號：${result.bookingId}\n治療師：${result.therapistName}\n時段：${date} ${selectedSlot}\n預約姓名：${name}`
+            }]);
+          }
+          alert("預約成功！");
+          liff.closeWindow();
+        } else {
+          alert(result.message);
+          btn.disabled = false;
+          btn.innerText = "確認預約送出";
         }
-        alert("預約成功！");
-        liff.closeWindow();
-      } else {
-        alert(result.message);
+      } catch (e) {
+        alert("連線異常，請稍候再試：" + e.message);
         btn.disabled = false;
         btn.innerText = "確認預約送出";
       }
@@ -246,52 +280,61 @@
     async function loadUserBookings() {
       const list = document.getElementById("myBookingsList");
       list.innerHTML = "載入中...";
-      const res = await fetch(`${GAS_URL}?action=getUserBookings&userId=${currentUser.id}`);
-      const data = await res.json();
+      
+      try {
+        const res = await fetch(`${GAS_URL}?action=getUserBookings&userId=${currentUser.id}`);
+        const data = await res.json();
 
-      list.innerHTML = "";
-      if (!data.bookings || data.bookings.length === 0) {
-        list.innerHTML = "<p style='color:#888;'>目前沒有未來的有效預約。</p>";
-        return;
-      }
-
-      data.bookings.forEach(b => {
-        const item = document.createElement("div");
-        item.style.borderBottom = "1px solid #eee";
-        item.style.padding = "10px 0";
-
-        const start = new Date(b.startTime);
-        const hoursDiff = (start.getTime() - new Date().getTime()) / 3600000;
-
-        let actionHtml = "";
-        if (hoursDiff > 72) {
-          actionHtml = `<button onclick="cancelBooking('${b.bookingId}')" style="background:#d32f2f;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">取消此預約</button>`;
-        } else {
-          actionHtml = `<div class="cancel-warning">⚠️ 距預約已不足 72 小時，無法線上取消。<br><a href="tel:${currentUser.clinicPhone}" style="color:#d32f2f;font-weight:bold;text-decoration:underline;">點此電聯人工取消 (${currentUser.clinicPhone})</a></div>`;
+        list.innerHTML = "";
+        if (!data.bookings || data.bookings.length === 0) {
+          list.innerHTML = "<p style='color:#888;'>目前沒有未來的有效預約。</p>";
+          return;
         }
 
-        item.innerHTML = `
-          <div><strong>時間：</strong>${b.startTime}</div>
-          <div><strong>治療師：</strong>${b.therapistName}</div>
-          <div><strong>預約人：</strong>${b.name}</div>
-          <div style="margin-top:8px;">${actionHtml}</div>
-        `;
-        list.appendChild(item);
-      });
+        data.bookings.forEach(b => {
+          const item = document.createElement("div");
+          item.style.borderBottom = "1px solid #eee";
+          item.style.padding = "10px 0";
+
+          const start = new Date(b.startTime);
+          const hoursDiff = (start.getTime() - new Date().getTime()) / 3600000;
+
+          let actionHtml = "";
+          if (hoursDiff > 72) {
+            actionHtml = `<button onclick="cancelBooking('${b.bookingId}')" style="background:#d32f2f;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">取消此預約</button>`;
+          } else {
+            actionHtml = `<div class="cancel-warning">⚠️ 距預約已不足 72 小時，無法線上取消。<br><a href="tel:${currentUser.clinicPhone}" style="color:#d32f2f;font-weight:bold;text-decoration:underline;">點此電聯人工取消 (${currentUser.clinicPhone})</a></div>`;
+          }
+
+          item.innerHTML = `
+            <div><strong>時間：</strong>${b.startTime}</div>
+            <div><strong>治療師：</strong>${b.therapistName}</div>
+            <div><strong>預約人：</strong>${b.name}</div>
+            <div style="margin-top:8px;">${actionHtml}</div>
+          `;
+          list.appendChild(item);
+        });
+      } catch (e) {
+        list.innerHTML = "<p style='color:#d32f2f;'>載入失敗，請稍後重試。</p>";
+      }
     }
 
     async function cancelBooking(bookingId) {
       if (!confirm("確定要取消此筆預約嗎？")) return;
-      const res = await fetch(GAS_URL, {
-        method: "POST",
-        body: JSON.stringify({ action: "cancelBooking", bookingId: bookingId })
-      });
-      const result = await res.json();
-      if (result.status === "success") {
-        alert("已成功取消預約");
-        loadUserBookings();
-      } else {
-        alert(result.message);
+      try {
+        const res = await fetch(GAS_URL, {
+          method: "POST",
+          body: JSON.stringify({ action: "cancelBooking", bookingId: bookingId })
+        });
+        const result = await res.json();
+        if (result.status === "success") {
+          alert("已成功取消預約");
+          loadUserBookings();
+        } else {
+          alert(result.message);
+        }
+      } catch (e) {
+        alert("取消失敗：" + e.message);
       }
     }
   </script>
