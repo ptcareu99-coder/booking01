@@ -141,7 +141,7 @@
 
   <script>
     const LIFF_ID = "2012228224-VTA2gR3j";
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbz0UnbowglO1ETIuPcwA27Ja_avRkc7fYcrGIxuJ935pV5ERVFKaRP0aNn1z049aCrHuA/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzT047K8KHkPRc9XxSKuo309Y26NcCXd_UlMS3XbGoeCGHriL7pCml12yZvLUWulggimw/exec";
 
     let currentUser = { id: "", name: "", phone: "", isRegistered: false, isBlocked: false, clinicPhone: "" };
     let currentTherapistId = "T01"; // 預設帶入 T01 蔡老師
@@ -581,8 +581,74 @@
         btn.innerText = "確認代約送出";
       }
     }
+async function loadStaffCheckInList() {
+      const list = document.getElementById("staffCheckInList");
+      const qDate = document.getElementById("staffQueryDate").value;
+      // 優先讀取下拉選單的值，若選「全部治療師」則傳空字串，後端會自動列出全診所預約
+      const qTherapist = document.getElementById("staffQueryTherapist") ? document.getElementById("staffQueryTherapist").value : currentTherapistId;
 
+      list.innerHTML = "<div style='color:#888; text-align:center; padding:10px;'>載入當日名單中...</div>";
+
+      try {
+        const res = await fetch(`${GAS_URL}?action=getTherapistDailyBookings&therapistId=${encodeURIComponent(qTherapist)}&date=${encodeURIComponent(qDate)}`);
+        const data = await res.json();
+        list.innerHTML = "";
+
+        if (!data.bookings || data.bookings.length === 0) {
+          list.innerHTML = `<div style='color:#888; text-align:center; padding:14px 0;'>該日（${qDate}）尚無預約排程。</div>`;
+          return;
+        }
+
+        data.bookings.forEach(b => {
+          const div = document.createElement("div");
+          div.className = "att-item";
+
+          let statusBadge = `<span class="badge-status st-${b.status}">${b.status}</span>`;
+          let buttons = "";
+
+          if (b.status === "CONFIRMED") {
+            buttons = `
+              <div class="att-actions">
+                <button class="btn-att btn-attend" onclick="reportAttendance('${b.bookingId}', 'ATTENDED')">✅ 確認出席</button>
+                <button class="btn-att btn-noshow" onclick="reportAttendance('${b.bookingId}', 'NO_SHOW')">❌ 未到/爽約</button>
+              </div>
+            `;
+          }
+
+          div.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong>【${b.timeStr}】${b.name}</strong>
+              ${statusBadge}
+            </div>
+            <div style="font-size:12px; color:#666; margin-top:4px;">
+              電話：${b.phone || '無'} ｜ 單號：${b.bookingId} ｜ 備註：${b.note || '無'}
+            </div>
+            ${buttons}
+          `;
+          list.appendChild(div);
+        });
+      } catch (e) {
+        list.innerHTML = "<div style='color:#d32f2f; text-align:center;'>載入失敗: " + e.message + "</div>";
+      }
+    }
     // 載入當日個案報到打卡清單
+    <!-- 當日報到回報打卡清單 -->
+    <div class="card">
+      <h3>今日個案報到回報</h3>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
+        <div style="display:flex; gap:8px;">
+          <!-- 增加切換選單 -->
+          <select id="staffQueryTherapist" style="flex:1;" onchange="loadStaffCheckInList()">
+            <option value="">全部治療師</option>
+            <option value="T01" selected>蔡老師</option>
+            <option value="T02">許老師</option>
+          </select>
+          <input type="date" id="staffQueryDate" style="flex:1;" onchange="loadStaffCheckInList()">
+        </div>
+        <button onclick="loadStaffCheckInList()" style="width:100%; padding:10px 14px; background:#e0e0e0; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">🔄 重新整理清單</button>
+      </div>
+      <div id="staffCheckInList">載入中...</div>
+    </div>
     async function loadStaffCheckInList() {
       const list = document.getElementById("staffCheckInList");
       const qDate = document.getElementById("staffQueryDate").value;
