@@ -41,6 +41,9 @@
     .role-badge-admin { display: inline-block; background: #fce4ec; color: #c62828; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-left: 6px; font-weight: bold; }
     .role-badge-staff { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-left: 6px; font-weight: bold; }
     .staff-scope-label { background: #f5f5f5; color: #555; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; }
+    
+    /* ★ Email 提示字樣 */
+    .field-hint { font-size: 12px; color: #777; margin-top: 4px; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -71,6 +74,12 @@
       <input type="text" id="patientName" placeholder="請輸入姓名">
       <label>聯絡手機</label>
       <input type="tel" id="patientPhone" placeholder="09xxxxxxxx">
+      
+      <!-- ★ 新增：電子信箱欄位 -->
+      <label>電子信箱（預約提醒通知用）</label>
+      <input type="email" id="patientEmail" placeholder="example@gmail.com">
+      <div class="field-hint">系統將於預約前 24 小時及 2 小時自動寄送 Email 提醒信。</div>
+
       <label>症狀或需求備註（選填）</label>
       <textarea id="patientNote" rows="2" placeholder="簡述您的情況"></textarea>
       <div id="firstTimeSection" class="first-time-box" style="display:none;">
@@ -110,6 +119,11 @@
       <input type="text" id="staffPatientName" placeholder="請輸入個案真實姓名">
       <label>個案手機（重要：有手機才能自動匹配/解鎖）</label>
       <input type="tel" id="staffPatientPhone" placeholder="09xxxxxxxx">
+
+      <!-- ★ 新增：代約時也可輸入個案 Email -->
+      <label>個案電子信箱（選填，用於發送行前提醒信）</label>
+      <input type="email" id="staffPatientEmail" placeholder="example@gmail.com">
+
       <label>代約備註（選填）</label>
       <input type="text" id="staffPatientNote" placeholder="例如：櫃檯電話代約、黑名單補約">
       <button id="staffSubmitBtn" class="btn-submit" onclick="submitStaffBooking()" style="margin-top: 14px;">確認代約送出</button>
@@ -152,13 +166,12 @@
   <script>
     // ⚙️ 設定區
     const LIFF_ID = "2012228224-VTA2gR3j";
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzT047K8KHkPRc9XxSKuo309Y26NcCXd_UlMS3XbGoeCGHriL7pCml12yZvLUWulggimw/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbyuvGsL7VyQOo-mwxB0tBd69VU5q_kNt7VSnNAPK8yKQSceoLd7AMno4GtGrjm1erufTg/exec";
 
     // ★ 管理者治療師 ID 清單（僅此處列出的 ID 可以查看/操作全部治療師的個案）
-    // 未來如需新增管理者，只要在這個陣列加上該治療師的 ID 即可
     const ADMIN_THERAPIST_IDS = ["T01"];
 
-    let currentUser = { id: "", name: "", phone: "", isRegistered: false, isBlocked: false, clinicPhone: "", isStaff: false };
+    let currentUser = { id: "", name: "", phone: "", email: "", isRegistered: false, isBlocked: false, clinicPhone: "", isStaff: false };
     let currentTherapistId = "";
     let currentTherapistName = "";
     let isAdmin = false;
@@ -324,7 +337,7 @@
       const staffSelect = document.getElementById("staffTherapistSelect");
       if (staffSelect) staffSelect.value = matchedId;
 
-      // ★ 設定報到回報卡片的角色介面
+      // 設定報到回報卡片的角色介面
       setupCheckInUI();
     }
 
@@ -337,17 +350,13 @@
       const querySelect = document.getElementById("staffQueryTherapist");
 
       if (isAdmin) {
-        // ★ 管理者：顯示治療師下拉切換 + 角色標籤
         roleBadge.innerHTML = '<span class="role-badge-admin">管理者</span>';
         adminFilterRow.style.display = "block";
         normalFilterRow.style.display = "none";
         scopeLabelOwn.style.display = "none";
 
-        // 預設選「全部治療師」
         if (querySelect) querySelect.value = "";
-
       } else {
-        // ★ 一般治療師：隱藏治療師下拉，鎖定只顯示自己的個案
         roleBadge.innerHTML = '<span class="role-badge-staff">我的個案</span>';
         adminFilterRow.style.display = "none";
         normalFilterRow.style.display = "block";
@@ -377,6 +386,7 @@
           `;
           document.getElementById("patientName").disabled = true;
           document.getElementById("patientPhone").disabled = true;
+          document.getElementById("patientEmail").disabled = true; // ★ 鎖定時禁用 Email 欄位
           document.getElementById("patientNote").disabled = true;
           document.getElementById("bookDate").disabled = true;
           document.getElementById("submitBtn").disabled = true;
@@ -388,6 +398,11 @@
           currentUser.isRegistered = true;
           document.getElementById("patientName").value = custRes.name;
           document.getElementById("patientPhone").value = custRes.phone;
+          // ★ 自動回填舊客已儲存的 Email
+          if (custRes.email) {
+            currentUser.email = custRes.email;
+            document.getElementById("patientEmail").value = custRes.email;
+          }
           document.getElementById("memberBadge").innerHTML = '<span class="badge-member">已認證舊客</span>';
           document.getElementById("firstTimeSection").style.display = "none";
         } else {
@@ -450,6 +465,7 @@
       }
       const name = document.getElementById("patientName").value.trim();
       const phone = document.getElementById("patientPhone").value.trim();
+      const email = document.getElementById("patientEmail").value.trim(); // ★ 讀取 Email
       const date = document.getElementById("bookDate").value;
       const note = document.getElementById("patientNote").value.trim();
 
@@ -457,6 +473,13 @@
         alert("請完整填寫姓名、電話並選擇預約時段");
         return;
       }
+
+      // ★ 格式驗證：若有填寫 Email，檢查是否具備基本格式
+      if (email && !email.includes("@")) {
+        alert("請輸入有效的電子信箱格式");
+        return;
+      }
+
       if (!currentUser.isRegistered) {
         if (!document.getElementById("agreeTerms").checked) {
           alert("初次預約請勾選確認預約規範");
@@ -472,8 +495,12 @@
         action: "createBooking",
         userId: currentUser.id,
         therapistId: document.getElementById("therapistSelect").value,
-        date: date, timeSlot: selectedSlot,
-        name: name, phone: phone, note: note
+        date: date,
+        timeSlot: selectedSlot,
+        name: name,
+        phone: phone,
+        email: email, // ★ 傳入 Email 至後端
+        note: note
       };
 
       try {
@@ -483,7 +510,7 @@
           if (typeof liff !== "undefined" && liff.isInClient && liff.isInClient()) {
             await liff.sendMessages([{ type: "text", text: `已確認預約！\n預約代號：${result.bookingId}\n治療師：${result.therapistName}\n時段：${date} ${selectedSlot}\n預約姓名：${name}` }]);
           }
-          alert("預約成功！");
+          alert("預約成功！" + (email ? "\n系統將於預約前發送 Email 提醒信。" : ""));
           if (typeof liff !== "undefined" && liff.closeWindow) liff.closeWindow();
         } else {
           alert(result.message);
@@ -624,6 +651,7 @@
       const targetTherapistId = select ? select.value : currentTherapistId;
       const name = document.getElementById("staffPatientName").value.trim();
       const phone = document.getElementById("staffPatientPhone").value.trim();
+      const email = document.getElementById("staffPatientEmail").value.trim(); // ★ 讀取代約 Email
       const date = document.getElementById("staffBookDate").value;
       const note = document.getElementById("staffPatientNote").value.trim();
 
@@ -636,10 +664,15 @@
       btn.innerText = "代約建立中...";
 
       const payload = {
-        action: "createBooking", isStaffManual: true,
-        therapistId: targetTherapistId, date: date,
-        timeSlot: selectedStaffSlot, name: name,
-        phone: phone, note: note || "治療師代約"
+        action: "createBooking",
+        isStaffManual: true,
+        therapistId: targetTherapistId,
+        date: date,
+        timeSlot: selectedStaffSlot,
+        name: name,
+        phone: phone,
+        email: email, // ★ 傳入代約 Email 至後端
+        note: note || "治療師代約"
       };
 
       try {
@@ -649,6 +682,7 @@
           alert(`代約成功！\n預約單號：${result.bookingId}\n個案：${name}\n時段：${date} ${selectedStaffSlot}`);
           document.getElementById("staffPatientName").value = "";
           document.getElementById("staffPatientPhone").value = "";
+          document.getElementById("staffPatientEmail").value = ""; // ★ 重設代約 Email 欄位
           document.getElementById("staffPatientNote").value = "";
           loadStaffSlots();
         } else {
