@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>物理治療預約系統</title>
-  <!-- LINE LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     :root { --primary: #06c755; --bg: #f8f9fa; --card: #ffffff; --text: #222; --danger: #d32f2f; }
@@ -27,11 +26,7 @@
     .first-time-box { background: #fff8e1; border: 1px solid #ffe082; padding: 12px; border-radius: 8px; margin-top: 14px; font-size: 13px; color: #795548; line-height: 1.5; }
     .checkbox-container { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; }
     .checkbox-container input { width: auto; margin-top: 3px; }
-    
-    /* 黑名單鎖定視窗 */
     .blocked-banner { background: #ffebee; border: 1px solid #ffcdd2; color: #b71c1c; padding: 14px; border-radius: 8px; margin-bottom: 14px; line-height: 1.6; font-size: 14px; }
-    
-    /* 治療師回報打卡介面樣式 */
     .att-item { border-bottom: 1px solid #eee; padding: 12px 0; }
     .att-actions { display: flex; gap: 8px; margin-top: 10px; }
     .btn-att { flex: 1; padding: 9px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; }
@@ -41,11 +36,15 @@
     .st-CONFIRMED { background: #fff3e0; color: #e65100; }
     .st-ATTENDED { background: #e8f5e9; color: #2e7d32; }
     .st-NO_SHOW { background: #ffebee; color: #c62828; }
+
+    /* 角色標示 */
+    .role-badge-admin { display: inline-block; background: #fce4ec; color: #c62828; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-left: 6px; font-weight: bold; }
+    .role-badge-staff { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-left: 6px; font-weight: bold; }
+    .staff-scope-label { background: #f5f5f5; color: #555; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; }
   </style>
 </head>
 <body>
 
-  <!-- 頂部頁籤切換 -->
   <div class="tab-bar">
     <div id="tab-book" class="tab active" onclick="switchView('book')">線上預約</div>
     <div id="tab-manage" class="tab" onclick="switchView('manage')">我的行程</div>
@@ -55,34 +54,25 @@
   <!-- ================= 1. 個案線上預約介面 ================= -->
   <div id="view-book">
     <div id="blockedWarning" class="blocked-banner" style="display:none;"></div>
-
     <div class="card" id="bookingCard">
       <h3>填寫預約需求 <span id="memberBadge"></span></h3>
-
       <div id="assignedTherapistBar" class="therapist-info-bar"></div>
-
       <div id="therapistGroup">
         <label>預約治療師</label>
         <select id="therapistSelect" onchange="loadSlots()">
           <option value="">載入治療師清單中...</option>
         </select>
       </div>
-
       <label>預約日期（僅開放未來 14 天內）</label>
       <input type="date" id="bookDate" onchange="loadSlots()">
-
       <label>時段選擇（50分鐘/堂）</label>
       <div id="slotContainer" class="slot-grid">請先選擇日期</div>
-
       <label>真實姓名</label>
       <input type="text" id="patientName" placeholder="請輸入姓名">
-
       <label>聯絡手機</label>
       <input type="tel" id="patientPhone" placeholder="09xxxxxxxx">
-
       <label>症狀或需求備註（選填）</label>
       <textarea id="patientNote" rows="2" placeholder="簡述您的情況"></textarea>
-
       <div id="firstTimeSection" class="first-time-box" style="display:none;">
         <strong>【預約規範提醒】</strong><br>
         若無故爽約累積達 2 次，系統將暫停線上自助預約功能，須由專屬治療師代約。距預約 72 小時內線上無法自行取消，敬請知悉。
@@ -91,7 +81,6 @@
           <label for="agreeTerms" style="margin-top:0; font-weight:normal;">我已瞭解預約與出缺席規範</label>
         </div>
       </div>
-
       <button id="submitBtn" class="btn-submit" onclick="submitBooking()">確認預約送出</button>
     </div>
   </div>
@@ -104,72 +93,82 @@
     </div>
   </div>
 
-  <!-- ================= 3. 治療師專用介面（代約專區 + 出缺席回報打卡） ================= -->
+  <!-- ================= 3. 治療師專用介面 ================= -->
   <div id="view-staff" style="display:none;">
-    
+
     <!-- 治療師專屬代約卡片 -->
     <div class="card" style="border: 2px solid var(--primary);">
       <h3 style="color: #2e7d32;">📝 治療師專屬代約（不受黑名單限制）</h3>
       <p style="font-size: 13px; color: #666; margin: 0 0 10px 0;">適用電話預約、現場加約或協助受限個案代約解鎖。</p>
-      
       <label>代約之治療師</label>
-      <select id="staffTherapistSelect" onchange="onStaffTherapistChange()">
-        <!-- 動態帶入 -->
-      </select>
-
+      <select id="staffTherapistSelect" onchange="onStaffTherapistChange()"></select>
       <label>預約日期</label>
       <input type="date" id="staffBookDate" onchange="loadStaffSlots()">
-
       <label>時段選擇</label>
       <div id="staffSlotContainer" class="slot-grid">請先選擇日期</div>
-
       <label>個案姓名</label>
       <input type="text" id="staffPatientName" placeholder="請輸入個案真實姓名">
-
       <label>個案手機（重要：有手機才能自動匹配/解鎖）</label>
       <input type="tel" id="staffPatientPhone" placeholder="09xxxxxxxx">
-
       <label>代約備註（選填）</label>
       <input type="text" id="staffPatientNote" placeholder="例如：櫃檯電話代約、黑名單補約">
-
       <button id="staffSubmitBtn" class="btn-submit" onclick="submitStaffBooking()" style="margin-top: 14px;">確認代約送出</button>
     </div>
 
     <!-- 當日報到回報打卡卡片 -->
     <div class="card">
-      <h3>今日個案報到回報</h3>
+      <h3>今日個案報到回報 <span id="roleBadge"></span></h3>
+
       <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
-        <div style="display:flex; gap:8px;">
-          <select id="staffQueryTherapist" style="flex:1;" onchange="loadStaffCheckInList()">
-            <option value="">全部治療師</option>
-          </select>
-          <input type="date" id="staffQueryDate" style="flex:1;" onchange="loadStaffCheckInList()">
+        <!-- 非管理者看到的固定提示（僅顯示自己個案） -->
+        <div id="scopeLabelOwn" class="staff-scope-label" style="display:none;">
+          📋 目前顯示：<strong id="scopeTherapistName">我的</strong> 個案
         </div>
+
+        <!-- 管理者看到的治療師切換下拉 -->
+        <div id="adminFilterRow" style="display:none;">
+          <div style="display:flex; gap:8px;">
+            <select id="staffQueryTherapist" style="flex:1;" onchange="loadStaffCheckInList()">
+              <option value="">全部治療師</option>
+            </select>
+            <input type="date" id="staffQueryDate" style="flex:1;" onchange="loadStaffCheckInList()">
+          </div>
+        </div>
+
+        <!-- 非管理者的日期選擇（沒有治療師下拉） -->
+        <div id="normalFilterRow" style="display:none;">
+          <div style="display:flex; gap:8px;">
+            <input type="date" id="staffQueryDateNormal" style="flex:1;" onchange="loadStaffCheckInList()">
+          </div>
+        </div>
+
         <button onclick="loadStaffCheckInList()" style="width:100%; padding:10px 14px; background:#e0e0e0; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">🔄 重新整理清單</button>
       </div>
       <div id="staffCheckInList">載入中...</div>
     </div>
   </div>
 
-  <!-- ================= 邏輯核心 JavaScript ================= -->
+  <!-- ================= JavaScript ================= -->
   <script>
-    // ⚙️ 設定區（請確認您的 LIFF ID 與 Google Apps Script 網址）
+    // ⚙️ 設定區
     const LIFF_ID = "2012228224-VTA2gR3j";
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzT047K8KHkPRc9XxSKuo309Y26NcCXd_UlMS3XbGoeCGHriL7pCml12yZvLUWulggimw/exec";
 
+    // ★ 管理者治療師 ID 清單（僅此處列出的 ID 可以查看/操作全部治療師的個案）
+    // 未來如需新增管理者，只要在這個陣列加上該治療師的 ID 即可
+    const ADMIN_THERAPIST_IDS = ["T01"];
+
     let currentUser = { id: "", name: "", phone: "", isRegistered: false, isBlocked: false, clinicPhone: "", isStaff: false };
-    let currentTherapistId = "T01";
+    let currentTherapistId = "";
+    let currentTherapistName = "";
+    let isAdmin = false;
     let selectedSlot = "";
     let selectedStaffSlot = "";
+    let therapistList = []; // 快取治療師清單
 
     function escapeHtml(str) {
       if (!str) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 
     function formatDateStr(date) {
@@ -179,15 +178,10 @@
       return `${y}-${m}-${d}`;
     }
 
-    // 🚀 頁面啟動入口（解耦設計，避免 LIFF 初始化卡死資料載入）
+    // ── 頁面啟動 ──
     window.onload = () => {
-      // 1. 初始化日期選單（本地計算）
       initDateInputs();
-
-      // 2. 獨立載入治療師清單與診所資訊（不卡關）
       loadTherapistsAndClinic();
-
-      // 3. 獨立啟動 LIFF 身分驗證
       initLiffAuth();
     };
 
@@ -195,7 +189,7 @@
       const now = new Date();
       const minDate = new Date(); minDate.setDate(now.getDate() + 1);
       const maxDate = new Date(); maxDate.setDate(now.getDate() + 14);
-      
+
       const dateInput = document.getElementById("bookDate");
       if (dateInput) {
         dateInput.min = formatDateStr(minDate);
@@ -203,14 +197,19 @@
         dateInput.value = formatDateStr(minDate);
       }
 
+      // 管理者用的日期
       const staffDateInput = document.getElementById("staffQueryDate");
       if (staffDateInput) staffDateInput.value = formatDateStr(now);
+
+      // 一般治療師用的日期
+      const staffDateInputNormal = document.getElementById("staffQueryDateNormal");
+      if (staffDateInputNormal) staffDateInputNormal.value = formatDateStr(now);
 
       const staffBookDateInput = document.getElementById("staffBookDate");
       if (staffBookDateInput) staffBookDateInput.value = formatDateStr(minDate);
     }
 
-    // 載入治療師與診所資料
+    // ── 載入治療師清單 ──
     async function loadTherapistsAndClinic() {
       const select = document.getElementById("therapistSelect");
       const staffSelect = document.getElementById("staffTherapistSelect");
@@ -222,27 +221,25 @@
 
         if (initRes && initRes.status === "success") {
           currentUser.clinicPhone = initRes.clinicPhone || "";
+          therapistList = initRes.therapists || [];
+
           select.innerHTML = "";
           if (staffSelect) staffSelect.innerHTML = "";
           if (querySelect) querySelect.innerHTML = '<option value="">全部治療師</option>';
 
-          if (initRes.therapists && initRes.therapists.length > 0) {
-            initRes.therapists.forEach(t => {
-              // 顧客預約選單
+          if (therapistList.length > 0) {
+            therapistList.forEach(t => {
               const opt = document.createElement("option");
               opt.value = t.id;
               opt.innerText = t.name;
               select.appendChild(opt);
 
-              // 治療師代約選單
               if (staffSelect) {
                 const optS = document.createElement("option");
                 optS.value = t.id;
                 optS.innerText = t.name;
                 staffSelect.appendChild(optS);
               }
-
-              // 後台查詢選單
               if (querySelect) {
                 const optQ = document.createElement("option");
                 optQ.value = t.id;
@@ -251,7 +248,6 @@
               }
             });
 
-            // 檢查 URL 參數是否有指定特定治療師 ?therapist=T01
             const urlParams = new URLSearchParams(window.location.search);
             const urlTherapist = urlParams.get('therapist');
             if (urlTherapist && select) {
@@ -263,7 +259,6 @@
               bar.innerText = `預約專屬治療師：${selectedText}`;
             }
 
-            // 載入該治療師與預設日期的時段
             loadSlots();
           } else {
             select.innerHTML = "<option value=''>尚無可預約之治療師</option>";
@@ -277,7 +272,7 @@
       }
     }
 
-    // 啟動 LIFF
+    // ── 啟動 LIFF 身分 ──
     async function initLiffAuth() {
       try {
         await liff.init({ liffId: LIFF_ID });
@@ -287,27 +282,87 @@
           currentUser.id = profile.userId;
           currentUser.name = profile.displayName;
 
-          // 判斷是否為治療師/員工名稱以開啟後台
-          if (profile.displayName && (profile.displayName.includes("蔡") || profile.displayName.includes("許") || profile.displayName.includes("老師"))) {
-            currentUser.isStaff = true;
-            document.getElementById("tab-staff").style.display = "block";
-          }
-
+          // 比對治療師身分
+          matchStaffIdentity(profile.displayName);
           checkCustomerStatus(profile.userId, profile.displayName);
         } else {
           document.getElementById("firstTimeSection").style.display = "block";
         }
       } catch (err) {
-        console.warn("LIFF 初始化跳過（非 LINE 客戶端或 ID 不符）:", err);
+        console.warn("LIFF 初始化跳過:", err);
         document.getElementById("firstTimeSection").style.display = "block";
       }
     }
 
-    // 檢查顧客黑名單與會員資料
+    // ── 判定登入者是否為治療師，並設定角色 ──
+    function matchStaffIdentity(displayName) {
+      if (!displayName) return;
+
+      let matchedId = "";
+      let matchedName = "";
+
+      for (const t of therapistList) {
+        const shortName = t.name.replace("老師", "");
+        if (displayName.includes(shortName)) {
+          matchedId = t.id;
+          matchedName = t.name;
+          break;
+        }
+      }
+
+      if (!matchedId) return;
+
+      currentTherapistId = matchedId;
+      currentTherapistName = matchedName;
+      currentUser.isStaff = true;
+      isAdmin = ADMIN_THERAPIST_IDS.includes(matchedId);
+
+      // 顯示後台分頁
+      document.getElementById("tab-staff").style.display = "block";
+
+      // 設定代約選單預設值
+      const staffSelect = document.getElementById("staffTherapistSelect");
+      if (staffSelect) staffSelect.value = matchedId;
+
+      // ★ 設定報到回報卡片的角色介面
+      setupCheckInUI();
+    }
+
+    // ── 依角色設定報到回報介面 ──
+    function setupCheckInUI() {
+      const roleBadge = document.getElementById("roleBadge");
+      const adminFilterRow = document.getElementById("adminFilterRow");
+      const normalFilterRow = document.getElementById("normalFilterRow");
+      const scopeLabelOwn = document.getElementById("scopeLabelOwn");
+      const querySelect = document.getElementById("staffQueryTherapist");
+
+      if (isAdmin) {
+        // ★ 管理者：顯示治療師下拉切換 + 角色標籤
+        roleBadge.innerHTML = '<span class="role-badge-admin">管理者</span>';
+        adminFilterRow.style.display = "block";
+        normalFilterRow.style.display = "none";
+        scopeLabelOwn.style.display = "none";
+
+        // 預設選「全部治療師」
+        if (querySelect) querySelect.value = "";
+
+      } else {
+        // ★ 一般治療師：隱藏治療師下拉，鎖定只顯示自己的個案
+        roleBadge.innerHTML = '<span class="role-badge-staff">我的個案</span>';
+        adminFilterRow.style.display = "none";
+        normalFilterRow.style.display = "block";
+        scopeLabelOwn.style.display = "block";
+
+        const scopeName = document.getElementById("scopeTherapistName");
+        if (scopeName) scopeName.innerText = currentTherapistName;
+      }
+    }
+
+    // ── 檢查顧客黑名單狀態 ──
     async function checkCustomerStatus(userId, displayName) {
       try {
         const custRes = await fetch(`${GAS_URL}?action=checkCustomer&userId=${encodeURIComponent(userId)}`).then(r => r.json());
-        
+
         if (custRes.status === "blocked") {
           currentUser.isBlocked = true;
           const warningBox = document.getElementById("blockedWarning");
@@ -320,7 +375,6 @@
               ${currentUser.clinicPhone}
             </a>（點擊直接撥打）
           `;
-
           document.getElementById("patientName").disabled = true;
           document.getElementById("patientPhone").disabled = true;
           document.getElementById("patientNote").disabled = true;
@@ -334,7 +388,7 @@
           currentUser.isRegistered = true;
           document.getElementById("patientName").value = custRes.name;
           document.getElementById("patientPhone").value = custRes.phone;
-          document.getElementById("memberBadge").innerHTML = `<span class="badge-member">已認證舊客</span>`;
+          document.getElementById("memberBadge").innerHTML = '<span class="badge-member">已認證舊客</span>';
           document.getElementById("firstTimeSection").style.display = "none";
         } else {
           currentUser.isRegistered = false;
@@ -346,7 +400,7 @@
       }
     }
 
-    // 載入個案自助預約時段
+    // ── 載入個案自助預約時段 ──
     async function loadSlots() {
       if (currentUser.isBlocked) return;
       const select = document.getElementById("therapistSelect");
@@ -359,21 +413,18 @@
         container.innerHTML = "<div style='grid-column:span 3; color:#888; text-align:center;'>請選擇治療師與日期</div>";
         return;
       }
-
       container.innerHTML = "<div style='grid-column:span 3; color:#888; text-align:center;'>查詢空檔中...</div>";
 
       try {
         const res = await fetch(`${GAS_URL}?action=getAvailableSlots&therapistId=${encodeURIComponent(therapistId)}&date=${encodeURIComponent(date)}`);
         const data = await res.json();
         container.innerHTML = "";
-
         const validSlots = (data.slots || []).filter(s => typeof s === 'string' && s.includes(':') && s.toUpperCase() !== 'OFF');
 
         if (validSlots.length === 0) {
           container.innerHTML = "<div style='grid-column:span 3; color:#999; text-align:center; padding:12px 0;'>該日無可預約時段（休診或已滿）</div>";
           return;
         }
-
         validSlots.forEach(slot => {
           const btn = document.createElement("div");
           btn.className = "slot-btn";
@@ -385,20 +436,18 @@
           };
           container.appendChild(btn);
         });
-
       } catch (e) {
         console.error("載入時段失敗:", e);
         container.innerHTML = "<div style='grid-column:span 3; color:#d32f2f; text-align:center;'>連線異常，請重試</div>";
       }
     }
 
-    // 個案送出自助預約
+    // ── 個案送出自助預約 ──
     async function submitBooking() {
       if (currentUser.isBlocked) {
         alert("您的帳號已被鎖定，無法自行線上預約，請由治療師代約。");
         return;
       }
-
       const name = document.getElementById("patientName").value.trim();
       const phone = document.getElementById("patientPhone").value.trim();
       const date = document.getElementById("bookDate").value;
@@ -408,10 +457,8 @@
         alert("請完整填寫姓名、電話並選擇預約時段");
         return;
       }
-
       if (!currentUser.isRegistered) {
-        const agree = document.getElementById("agreeTerms").checked;
-        if (!agree) {
+        if (!document.getElementById("agreeTerms").checked) {
           alert("初次預約請勾選確認預約規範");
           return;
         }
@@ -425,31 +472,19 @@
         action: "createBooking",
         userId: currentUser.id,
         therapistId: document.getElementById("therapistSelect").value,
-        date: date,
-        timeSlot: selectedSlot,
-        name: name,
-        phone: phone,
-        note: note
+        date: date, timeSlot: selectedSlot,
+        name: name, phone: phone, note: note
       };
 
       try {
-        const res = await fetch(GAS_URL, {
-          method: "POST",
-          body: JSON.stringify(payload)
-        });
+        const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify(payload) });
         const result = await res.json();
-
         if (result.status === "success") {
           if (typeof liff !== "undefined" && liff.isInClient && liff.isInClient()) {
-            await liff.sendMessages([{
-              type: "text",
-              text: `已確認預約！\n預約代號：${result.bookingId}\n治療師：${result.therapistName}\n時段：${date} ${selectedSlot}\n預約姓名：${name}`
-            }]);
+            await liff.sendMessages([{ type: "text", text: `已確認預約！\n預約代號：${result.bookingId}\n治療師：${result.therapistName}\n時段：${date} ${selectedSlot}\n預約姓名：${name}` }]);
           }
           alert("預約成功！");
-          if (typeof liff !== "undefined" && liff.closeWindow) {
-            liff.closeWindow();
-          }
+          if (typeof liff !== "undefined" && liff.closeWindow) liff.closeWindow();
         } else {
           alert(result.message);
           btn.disabled = false;
@@ -462,7 +497,7 @@
       }
     }
 
-    // 視圖切換
+    // ── 視圖切換 ──
     function switchView(view) {
       document.getElementById("view-book").style.display = "none";
       document.getElementById("view-manage").style.display = "none";
@@ -486,7 +521,7 @@
       }
     }
 
-    // 載入使用者自己的預約
+    // ── 載入使用者自己的預約 ──
     async function loadUserBookings() {
       const list = document.getElementById("myBookingsList");
       list.innerHTML = "載入中...";
@@ -498,21 +533,18 @@
           list.innerHTML = "<p style='color:#888;'>目前沒有未來的有效預約。</p>";
           return;
         }
-
         data.bookings.forEach(b => {
           const item = document.createElement("div");
           item.style.borderBottom = "1px solid #eee";
           item.style.padding = "10px 0";
           const start = new Date(b.startTime);
           const hoursDiff = (start.getTime() - new Date().getTime()) / 3600000;
-
           let actionHtml = "";
           if (hoursDiff > 72) {
             actionHtml = `<button onclick="cancelBooking('${escapeHtml(b.bookingId)}')" style="background:#d32f2f;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">取消此預約</button>`;
           } else {
             actionHtml = `<div class="cancel-warning">⚠️ 距預約已不足 72 小時，無法線上取消。<br><a href="tel:${currentUser.clinicPhone}" style="color:#d32f2f;font-weight:bold;text-decoration:underline;">點此電聯人工取消 (${escapeHtml(currentUser.clinicPhone)})</a></div>`;
           }
-
           item.innerHTML = `
             <div><strong>時間：</strong>${escapeHtml(b.startTime)}</div>
             <div><strong>治療師：</strong>${escapeHtml(b.therapistName)}</div>
@@ -526,14 +558,11 @@
       }
     }
 
-    // 取消預約
+    // ── 取消預約 ──
     async function cancelBooking(bookingId) {
       if (!confirm("確定要取消此筆預約嗎？")) return;
       try {
-        const res = await fetch(GAS_URL, {
-          method: "POST",
-          body: JSON.stringify({ action: "cancelBooking", bookingId: bookingId })
-        });
+        const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "cancelBooking", bookingId: bookingId }) });
         const result = await res.json();
         if (result.status === "success") {
           alert("已成功取消預約");
@@ -546,17 +575,15 @@
       }
     }
 
-    // ==================== 治療師專用：代約與報到邏輯 ====================
+    // ==================== 治療師專用 ====================
 
     function onStaffTherapistChange() {
       const select = document.getElementById("staffTherapistSelect");
-      if (select) {
-        currentTherapistId = select.value;
-      }
+      if (select) currentTherapistId = select.value;
       loadStaffSlots();
     }
 
-    // 載入治療師代約時段
+    // ── 載入治療師代約時段 ──
     async function loadStaffSlots() {
       const select = document.getElementById("staffTherapistSelect");
       const targetTherapistId = select ? select.value : currentTherapistId;
@@ -566,19 +593,15 @@
       if (!date || !targetTherapistId) return;
 
       container.innerHTML = "<div style='grid-column:span 3; color:#888; text-align:center;'>查詢空檔中...</div>";
-
       try {
         const res = await fetch(`${GAS_URL}?action=getAvailableSlots&therapistId=${encodeURIComponent(targetTherapistId)}&date=${encodeURIComponent(date)}`);
         const data = await res.json();
         container.innerHTML = "";
-
         const validSlots = (data.slots || []).filter(s => typeof s === 'string' && s.includes(':') && s.toUpperCase() !== 'OFF');
-
         if (validSlots.length === 0) {
           container.innerHTML = "<div style='grid-column:span 3; color:#999; text-align:center;'>當日無排班或時段已被約滿</div>";
           return;
         }
-
         validSlots.forEach(slot => {
           const btn = document.createElement("div");
           btn.className = "slot-btn";
@@ -595,7 +618,7 @@
       }
     }
 
-    // 送出治療師代約（isStaffManual: true 繞過黑名單）
+    // ── 送出治療師代約 ──
     async function submitStaffBooking() {
       const select = document.getElementById("staffTherapistSelect");
       const targetTherapistId = select ? select.value : currentTherapistId;
@@ -608,29 +631,20 @@
         alert("請完整填寫個案姓名、手機，並選取代約時段！");
         return;
       }
-
       const btn = document.getElementById("staffSubmitBtn");
       btn.disabled = true;
       btn.innerText = "代約建立中...";
 
       const payload = {
-        action: "createBooking",
-        isStaffManual: true,
-        therapistId: targetTherapistId,
-        date: date,
-        timeSlot: selectedStaffSlot,
-        name: name,
-        phone: phone,
-        note: note || "治療師代約"
+        action: "createBooking", isStaffManual: true,
+        therapistId: targetTherapistId, date: date,
+        timeSlot: selectedStaffSlot, name: name,
+        phone: phone, note: note || "治療師代約"
       };
 
       try {
-        const res = await fetch(GAS_URL, {
-          method: "POST",
-          body: JSON.stringify(payload)
-        });
+        const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify(payload) });
         const result = await res.json();
-
         if (result.status === "success") {
           alert(`代約成功！\n預約單號：${result.bookingId}\n個案：${name}\n時段：${date} ${selectedStaffSlot}`);
           document.getElementById("staffPatientName").value = "";
@@ -648,12 +662,22 @@
       }
     }
 
-    // 載入當日個案報到打卡清單
+    // ★★★ 核心：載入當日個案報到清單（依角色決定查詢範圍）★★★
     async function loadStaffCheckInList() {
       const list = document.getElementById("staffCheckInList");
-      const qDate = document.getElementById("staffQueryDate").value;
-      const qSelect = document.getElementById("staffQueryTherapist");
-      const qTherapist = qSelect ? qSelect.value : "";
+      let qDate = "";
+      let qTherapist = "";
+
+      if (isAdmin) {
+        // 管理者：從下拉選單取值（可選全部或特定治療師）
+        qDate = document.getElementById("staffQueryDate").value;
+        const qSelect = document.getElementById("staffQueryTherapist");
+        qTherapist = qSelect ? qSelect.value : "";  // 空值 = 全部治療師
+      } else {
+        // 一般治療師：強制鎖定為自己的 ID，無法切換
+        qDate = document.getElementById("staffQueryDateNormal").value;
+        qTherapist = currentTherapistId;
+      }
 
       list.innerHTML = "<div style='color:#888; text-align:center; padding:10px;'>載入當日名單中...</div>";
 
@@ -683,9 +707,15 @@
             `;
           }
 
+          // 管理者看全部時，額外顯示治療師名稱供辨識
+          let therapistLabel = "";
+          if (isAdmin && b.therapistName) {
+            therapistLabel = `<span style="background:#e3f2fd; color:#1565c0; font-size:11px; padding:1px 6px; border-radius:3px; margin-left:6px;">${escapeHtml(b.therapistName)}</span>`;
+          }
+
           div.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong>【${escapeHtml(b.timeStr)}】${escapeHtml(b.name)}</strong>
+              <strong>【${escapeHtml(b.timeStr)}】${escapeHtml(b.name)}${therapistLabel}</strong>
               ${statusBadge}
             </div>
             <div style="font-size:12px; color:#666; margin-top:4px;">
@@ -700,7 +730,7 @@
       }
     }
 
-    // 治療師打卡回報（出席自動解鎖 / 連續兩次未到自動封鎖）
+    // ── 治療師打卡回報 ──
     async function reportAttendance(bookingId, status) {
       const actionName = status === "ATTENDED" ? "出席" : "未到/爽約";
       if (!confirm(`確定要將此個案標註為【${actionName}】嗎？`)) return;
